@@ -1,81 +1,89 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
+// src/pages/events/EventsList.jsx
+import React, { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import Sidebar from '../../components/Sidebar';
+import EventCard from '../../components/EventCard';
 
-export default function EventsList() {
+function EventsList() {
   const { user } = useAuth()
-  const [items, setItems] = useState([])
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [filters, setFilters] = useState({ search: '', upcoming: true })
+  const [items, setItems] = useState([])
 
-  async function load() {
-    setLoading(true)
-    setError('')
+  useEffect(() => {
+    let abort = new AbortController()
+    ;(async () => {
+      try {
+        setError('')
+        setLoading(true)
+        const { api } = await import('../../lib/api.js')
+        const res = await api.get('/events', { signal: abort.signal })
+        setItems(res.items || [])
+      } catch (e) {
+        if (e.name !== 'AbortError') setError(e.message || 'Failed to load events')
+      } finally {
+        setLoading(false)
+      }
+    })()
+    return () => abort.abort()
+  }, [])
+
+  const cards = useMemo(() => {
+    const fmtDate = (iso) => {
+      try {
+        const d = new Date(iso)
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+      } catch { return '' }
+    }
+    const fmtTime = (start, end) => {
+      try {
+        const s = new Date(start).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        const e = new Date(end).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        return `${s} - ${e}`
+      } catch { return '' }
+    }
+    return items.map(ev => ({
+      id: ev.id,
+      title: ev.title,
+      description: ev.description || '',
+      location: ev.location || 'TBD',
+      date: fmtDate(ev.start_time),
+      time: fmtTime(ev.start_time, ev.end_time),
+      image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1470&q=80',
+    }))
+  }, [items])
+
+  const handleRegister = async (event) => {
+    if (!user) {
+      navigate('/signin', { state: { from: { pathname: '/events' } } })
+      return
+    }
     try {
       const { api } = await import('../../lib/api.js')
-      const params = new URLSearchParams()
-      if (filters.search) params.set('search', filters.search)
-      if (filters.upcoming) params.set('upcoming', 'true')
-      const res = await api.get(`/api/events?${params.toString()}`)
-      setItems(res.items || [])
+      await api.post(`/events/${event.id}/register`)
+      navigate('/my-events')
     } catch (e) {
-      setError(e.message || 'Failed to load events')
-    } finally {
-      setLoading(false)
+      throw e
     }
   }
 
-  useEffect(() => { load() }, [])
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Events</h2>
-        {user?.role === 'admin' && <Link to="/events/new" className="rounded-md bg-brand-600 hover:bg-brand-700 text-white px-4 py-2">Create Event</Link>}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-4">
-        {/* Sidebar */}
-        <aside className="lg:col-span-1 card p-5">
-          <h3 className="text-lg font-semibold pb-3 border-b">Filter Events</h3>
-          <div className="mt-4 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Search</label>
-              <input
-                value={filters.search}
-                onChange={e=>setFilters(f=>({...f, search: e.target.value}))}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                placeholder="Search by title, location..."
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input id="upcoming" type="checkbox" checked={filters.upcoming} onChange={e=>setFilters(f=>({...f, upcoming: e.target.checked}))} />
-              <label htmlFor="upcoming" className="text-sm">Upcoming only</label>
-            </div>
-            <button onClick={load} className="w-full rounded-md bg-brand-600 hover:bg-brand-700 text-white px-4 py-2">Apply Filters</button>
-          </div>
-        </aside>
-
-        {/* Grid */}
-        <section className="lg:col-span-3">
-          {loading && <p>Loading...</p>}
-          {error && <p className="text-red-600">{error}</p>}
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {items.map(e => (
-              <Link key={e.id} to={`/events/${e.id}`} className="rounded-xl bg-white shadow-card p-0 hover:shadow-lg transition overflow-hidden">
-                <div className="h-32 bg-gradient-to-r from-brand-600 to-brand-700" />
-                <div className="p-4">
-                  <span className="inline-block text-xs text-white bg-brand-600 rounded px-2 py-0.5">{new Date(e.start_time).toLocaleDateString()}</span>
-                  <h3 className="text-lg font-medium mt-2">{e.title}</h3>
-                  {e.location && <p className="text-sm text-gray-600">{e.location}</p>}
-                  <p className="text-sm text-gray-700 mt-2">Available: {e.available_seats}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      </div>
+    <div className="main-content">
+      <Sidebar />
+      <section className="events-section">
+        <h2><i className="fas fa-calendar-week"></i> Upcoming Events</h2>
+        {loading && <p>Loading events...</p>}
+        {error && <p style={{ color: 'red' }}>{error}</p>}
+        <div className="events-grid">
+          {cards.map(event => (
+            <EventCard key={event.id} event={event} onRegister={handleRegister} />
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
+
+export default EventsList;

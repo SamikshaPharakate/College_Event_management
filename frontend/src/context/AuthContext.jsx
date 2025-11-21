@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
       try {
         const t = getToken()
         if (t) {
-          const me = await api.get('/api/auth/me')
+          const me = await api.get('/auth/me')
           setUser(me.user)
         }
       } catch (e) {
@@ -34,7 +34,7 @@ export function AuthProvider({ children }) {
   const login = async ({ email, password }) => {
     if (!email || !password) throw new Error('Email and password required')
     setError('')
-    const res = await api.post('/api/auth/login', { email, password })
+    const res = await api.post('/auth/login', { email, password })
     setToken(res.token)
     setUser(res.user)
     return res.user
@@ -43,7 +43,7 @@ export function AuthProvider({ children }) {
   const register = async ({ name, email, password, role = 'user' }) => {
     if (!name || !email || !password) throw new Error('All fields required')
     setError('')
-    const res = await api.post('/api/auth/register', { name, email, password, role })
+    const res = await api.post('/auth/register', { name, email, password, role })
     setToken(res.token)
     setUser(res.user)
     return res.user
